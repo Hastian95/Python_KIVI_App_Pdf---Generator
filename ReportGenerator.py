@@ -249,12 +249,15 @@ class CameraWidget(BoxLayout):
     def update(self, dt):
         ret, frame = self.capture.read()
         if ret:
-            self.current_frame = frame
+            frame = cv2.flip(frame, 0)
+            frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+            self.current_frame = frame_rgb
             # Konwersja do tekstury Kivy (BGR -> RGB + flip pionowy)
             frame = cv2.flip(frame, 0)
             frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-            texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
-            texture.blit_buffer(frame.tobytes(), colorfmt='rgb', bufferfmt='ubyte')
+            texture = Texture.create(size=(frame_rgb.shape[1], frame_rgb.shape[0]), colorfmt='rgb')
+            texture.blit_buffer(frame_rgb.tobytes(), colorfmt='rgb', bufferfmt='ubyte')
             self.img_widget.texture = texture
 
     def capture_image(self, *args):
@@ -310,24 +313,20 @@ class PhotoPreviewScreen(Screen):
         pw.pos = (left, bottom)
 
     def set_image(self, frame):
-        # (jeśli potrzebujesz flipa, zostaw; inaczej usuń)
-        frame = cv2.flip(frame, 0)
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        data = frame_rgb.tobytes()
+        # Przyjmujemy 'frame' w RGB (tak jak ustawił CameraWidget)
+        # Jeśli dostajesz BGR z innego miejsca, konwertuj tu: frame = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+
+        # tekstura oczekuje RGB
+        data = frame.tobytes()
         texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
         texture.blit_buffer(data, colorfmt='rgb', bufferfmt='ubyte')
         self.ids.preview_image.texture = texture
+
+        # przechowujemy obraz w RGB
         self.current_frame = frame
-        # po ustawieniu tekstury przelicz nakładkę
+
+        # przelicz nakładkę rysowania
         Clock.schedule_once(self._update_paint_overlay, 0)
-    def set_image(self, frame):
-        frame = cv2.flip(frame, 0)
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-        data = frame_rgb.tobytes()
-        texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
-        texture.blit_buffer(data, colorfmt='rgb', bufferfmt='ubyte')
-        self.ids.preview_image.texture = texture
-        self.current_frame = frame
 
     def reject_photo(self):
         self.manager.current = 'report'
@@ -337,43 +336,53 @@ class PhotoPreviewScreen(Screen):
         app = MDApp.get_running_app()
         paint_widget = self.ids.paint_widget
 
-        # Eksportuj rysunek jako tekstura → numpy array (RGBA)
+        # 1) Eksport rysunku jako RGBA (H, W, 4)
         fbo_image = paint_widget.export_as_image()
-        texture = fbo_image.texture
-        size = texture.size
-        pixels = texture.pixels
+        tex = fbo_image.texture
+        size = tex.size
+        pixels = tex.pixels
         drawing = np.frombuffer(pixels, dtype=np.uint8).reshape((int(size[1]), int(size[0]), 4))
-        drawing = cv2.cvtColor(drawing, cv2.COLOR_RGBA2BGRA)  # zamiana RGBA → BGRA
 
-        # Przygotuj zdjęcie jako BGRA (czyli z kanałem przezroczystości)
-        photo = cv2.cvtColor(self.current_frame.copy(), cv2.COLOR_BGR2BGRA)
+        # Kivy's pixel order is RGBA already — drawing is RGBA
+        rgba = drawing  # (H, W, 4), kanały: R,G,B,A
 
-        # Dopasuj rysunek do rozmiaru zdjęcia (jeśli rozmiary inne)
-        drawing = cv2.resize(drawing, (photo.shape[1], photo.shape[0]))
-        drawing = cv2.flip(drawing,0)
+        # 2) Przygotuj zdjęcie jako RGB (już trzymamy current_frame jako RGB)
+        photo = self.current_frame  # RGB (H, W, 3)
 
-        # Połącz rysunek ze zdjęciem
-        combined = cv2.addWeighted(photo, 1.0, drawing, 1.0, 0)
+        # 3) Dopasuj rozmiary i flip (jeśli potrzeba)
+        rgba_resized = cv2.resize(rgba, (photo.shape[1], photo.shape[0]))
+        rgba_resized = cv2.flip(rgba_resized, 0)  # jeśli rysunek jest odwrócony
 
-        # Zamień z BGRA na BGR (czyli gotowe zdjęcie)
-        final_frame = cv2.cvtColor(combined, cv2.COLOR_BGRA2BGR)
+        # 4) Rozdziel kanały rysunku: rgb + alpha (0..1)
+        rgb_d = rgba_resized[:, :, :3].astype(np.float32)
+        alpha = rgba_resized[:, :, 3].astype(np.float32) / 255.0
+        alpha = alpha[:, :, None]  # kształt (H, W, 1)
 
-        # Wyślij do ekranu podsumowania
+        # 5) Kompozycja per-pixel: wynik = photo*(1-alpha) + drawing*alpha
+        photo_f = photo.astype(np.float32)
+        out = (photo_f * (1.0 - alpha) + rgb_d * alpha).astype(np.uint8)
+
+        # 6) final_frame jest RGB
+        final_frame = out
+
+        # Wyślij do Summary (trzymamy RGB wszędzie)
         summary_screen = app.root.get_screen('summary')
         summary_screen.set_image_and_description(final_frame)
         app.root.current = 'summary'
 
 class SummaryScreen(Screen):
     def set_image_and_description(self, frame):
-        # Konwersja obrazu do tekstury i ustawienie w Image widget
-        frame_rgb = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
+        # frame — oczekiwane RGB
+        frame_rgb = frame
         data = frame_rgb.tobytes()
-        texture = Texture.create(size=(frame.shape[1], frame.shape[0]), colorfmt='rgb')
+        texture = Texture.create(size=(frame_rgb.shape[1], frame_rgb.shape[0]), colorfmt='rgb')
         texture.blit_buffer(data, colorfmt='rgb', bufferfmt='ubyte')
         self.ids.accepted_image.texture = texture
-        self.current_frame = frame
 
-        # Wyczyść pole opisu przy wejściu
+        # Zapisujemy jako RGB
+        self.current_frame = frame_rgb
+
+        # Wyczyść opis
         self.ids.description_input.text = ""
 
     def reject_summary(self):
@@ -391,14 +400,11 @@ class SummaryScreen(Screen):
 
     def save_pdf(self):
         import cv2
-        # Pobierz obraz z aktualnej klatki (numpy array BGR)
-        frame = self.current_frame  # BGR numpy array
-        frame = cv2.flip(frame, 0)
-        # Konwertuj BGR do RGB (bo reportlab wymaga RGB)
+        # frame jest RGB
+        frame = self.current_frame
+        frame = cv2.flip(frame, 0)  # tylko jeśli chcesz odwrócić pionowo (zgodnie z resztą)
+        rgb_image = frame  # już RGB
 
-        rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)
-
-        # Zamień numpy array na bytes (w formacie PNG)
         is_success, buffer = cv2.imencode(".png", rgb_image)
         if not is_success:
             print("Błąd konwersji obrazu do PNG")
