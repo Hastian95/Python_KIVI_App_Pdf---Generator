@@ -11,6 +11,7 @@ from kivymd.uix.label import MDLabel
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
+from reportlab.lib import colors
 import io
 import cv2
 import time
@@ -178,10 +179,16 @@ ScreenManager:
             keep_ratio: True
 
         MDTextField:
+            id: description_input_legend
+            hint_text: "Tytuł strony"
+            multiline: False
+            size_hint_y: 0.15
+            
+        MDTextField:
             id: description_input
             hint_text: "Dodaj opis zdjęcia..."
             multiline: True
-            size_hint_y: 0.25
+            size_hint_y: 0.25    
 
         MDBoxLayout:
             size_hint_y: 0.15
@@ -384,6 +391,7 @@ class SummaryScreen(Screen):
 
         # Wyczyść opis
         self.ids.description_input.text = ""
+        self.ids.description_input_legend.text = ""
 
     def reject_summary(self):
         # Przykładowo wróć do ekranu kamery albo podglądu
@@ -391,9 +399,11 @@ class SummaryScreen(Screen):
 
     def accept_summary(self):
         description = self.ids.description_input.text.strip()
+        description_legend = self.ids.description_input_legend.text.strip()
         filename = f"zdjecie_{int(time.time())}.jpg"
         cv2.imwrite(filename, self.current_frame)
         print(f"📷 Zapisano zdjęcie: {filename}")
+        print(f"📝 Tytuł: {description_legend}")
         print(f"📝 Opis: {description}")
         # Tu możesz dodać zapis opisu do bazy lub pliku
         self.manager.current = 'start'  # lub inny ekran końcowy
@@ -414,6 +424,7 @@ class SummaryScreen(Screen):
 
         # Opis tekstowy
         description = self.ids.description_input.text.strip()
+        description_legend = self.ids.description_input_legend.text.strip()
 
         # Utwórz PDF na A4
         pdf_filename = f"raport_{int(time.time())}.pdf"
@@ -438,21 +449,71 @@ class SummaryScreen(Screen):
 
         c.drawImage(image, img_x, img_y, width=img_w, height=img_h)
 
+        # Oblicz maksymalną długość tytułu
+        def get_max_title_length(c, font_size, max_width):
+            # Oblicz szerokość jednego znaku
+            char_width = c.stringWidth('a', 'Arial', font_size)
+            # Oblicz liczbę znaków, które zmieszczą się w jednej linii
+            max_chars = max_width // char_width
+            return int(max_chars)
+
+        # Obliczamy maksymalną długość tytułu w jednej linii
+        title_font_size = 25
+        max_title_length = get_max_title_length(c, title_font_size, width - 100)
+
+        # Skracamy tytuł, jeśli jest za długi
+        if len(description_legend) > max_title_length:
+            description_legend = description_legend[:max_title_length]
+            self.ids.description_input_legend.text = description_legend
+            self.ids.description_input_legend.disabled = True  # Zablokowanie edycji
+
         # Dodaj opis pod obrazkiem
         text_x = 50
         text_y = img_y - 80
 
-        c.setFont("Arial", 15)
-        c.drawString(text_x, text_y, "Opis:")
-        c.setFont("Arial", 10)
-        text_lines = description.split('\n')
+        c.setFont("Arial", title_font_size)
+        c.drawString(text_x, text_y, "Tytuł:")
+        c.setFont("Arial", 16)
+        text_lines = description_legend.split('\n')
         for i, line in enumerate(text_lines):
-            c.drawString(text_x, text_y - 15 * (i + 1), line)
+            c.drawString(text_x, text_y - 25 * (i + 1), line)
+
+        # Dodaj opis pod obrazkiem
+        text_x = 50
+        text_y = img_y - 140
+
+        # Oblicz maksymalną liczbę linii opisu
+        max_lines = (height - img_y - 180) // 25  # 180 = marginesy i tytuł
+        max_lines = int(max_lines)
+
+        # Skracamy opis do odpowiedniej liczby linii
+        lines = []
+        line = ""
+        for word in description.split():
+            test_line = line + " " + word if line else word
+            if c.stringWidth(test_line, "Arial", 16) < (width - 100):  # Sprawdzenie szerokości
+                line = test_line
+            else:
+                lines.append(line)
+                line = word
+        if line:
+            lines.append(line)
+
+        # Ograniczamy liczbę linii
+        lines = lines[:max_lines]
+
+        c.setFont("Arial", 25)
+        c.drawString(text_x, text_y, "Opis:")
+        c.setFont("Arial", 16)
+        lines = description.split('\n')
+        for i, line in enumerate(lines):
+            c.drawString(text_x, text_y - 25 * (i + 1), line)
 
         c.showPage()
         c.save()
 
         print(f"✅ PDF zapisany jako {pdf_filename}")
+
 
 class PaintWidget(Widget):
 
