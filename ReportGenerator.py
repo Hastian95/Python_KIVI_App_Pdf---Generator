@@ -11,6 +11,8 @@ from kivymd.uix.label import MDLabel
 from reportlab.pdfgen import canvas
 from reportlab.lib.pagesizes import A4
 from reportlab.lib.utils import ImageReader
+from kivy.graphics import Color, Line, Rectangle, Ellipse
+from kivy.properties import ListProperty, StringProperty, NumericProperty
 from reportlab.lib import colors
 import io
 import cv2
@@ -109,106 +111,198 @@ ScreenManager:
 
 <PhotoPreviewScreen>:
     name: 'preview'
-    RelativeLayout:
-        id: preview_layout
-
-        Image:
-            id: preview_image
-            allow_stretch: True
-            keep_ratio: True
-            size_hint: 1, 1
-            pos_hint: {'center_x': 0.5, 'center_y': 0.5}
-
-        PaintWidget:
-            id: paint_widget
-            size_hint: None, None
-            size: 0, 0
-            pos: 0, 0
-
-    MDBoxLayout:
-        size_hint_y: None
-        height: dp(60)
-        spacing: dp(10)
-        padding: dp(20)
-        size_hint_x: None
-        width: self.minimum_width
-        pos_hint: {'center_x': 0.5}
-        MDIconButton:
-            icon: "close"
-            on_release: root.reject_photo()
-        MDIconButton:
-            icon: "check"
-            on_release: root.accept_photo()
- 
-        # 🧹 czyszczenie rysunku
-        MDIconButton:
-            icon: "delete"
-            on_release: paint_widget.clear_canvas()
-
-        # 🎨 wybór kolorów
-        MDIconButton:
-            icon: "circle"
-            theme_icon_color: "Custom"
-            icon_color: 1, 0, 0, 1
-            on_release: paint_widget.set_color((1, 0, 0, 1))  # czerwony
-
-        MDIconButton:
-            icon: "circle"
-            theme_icon_color: "Custom"
-            icon_color: 0, 1, 0, 1
-            on_release: paint_widget.set_color((0, 1, 0, 1))  # zielony
-
-        MDIconButton:
-            icon: "circle"
-            theme_icon_color: "Custom"
-            icon_color: 0, 0, 1, 1
-            on_release: paint_widget.set_color((0, 0, 1, 1))  # niebieski
-
+    BoxLayout:                   
+        orientation: "vertical"  
+    
+        Widget:                # pusty "odstęp"
+            size_hint_y: None
+            height: dp(60)     # tyle miejsca od góry
+        
+        
+        MDBoxLayout:                    
+            size_hint_y: None           
+            height: dp(60)              
+            spacing: dp(10)             
+            padding: dp(20)             
+            size_hint_x: None           
+            width: self.minimum_width   
+            pos_hint: {'center_x': 0.5} 
+            # 🎨 wybór kolorów
+            MDIconButton:
+                icon: "circle"
+                theme_icon_color: "Custom"
+                icon_color: 1, 0, 0, 1
+                on_release: paint_widget.set_color((1, 0, 0, 1))  # czerwony
+        
+            MDIconButton:
+                icon: "circle"
+                theme_icon_color: "Custom"
+                icon_color: 0, 1, 0, 1
+                on_release: paint_widget.set_color((0, 1, 0, 1))  # zielony
+        
+            MDIconButton:
+                icon: "circle"
+                theme_icon_color: "Custom"
+                icon_color: 0, 0, 1, 1
+                on_release: paint_widget.set_color((0, 0, 1, 1))  # niebieski
+            
+        MDBoxLayout:
+            size_hint_y: None
+            height: dp(60)
+            spacing: dp(10)
+            padding: dp(20)
+            size_hint_x: None
+            width: self.minimum_width
+            pos_hint: {'center_y': 0.1}
+            pos_hint: {'center_x': 0.5}
+                
+                 # ✏️ narzędzia do rysowania
+            MDIconButton:
+                icon: "pencil"
+                on_release: paint_widget.set_tool("free")  # tryb swobodnego rysowania
+            
+            MDIconButton:
+                icon: "ray-start-end"
+                on_release: paint_widget.set_tool("line")  # prosta linia
+            
+            MDIconButton:
+                icon: "checkbox-blank-outline"
+                on_release: paint_widget.set_tool("rect")  # prostokąt
+            
+            MDIconButton:
+                icon: "circle-outline"
+                on_release: paint_widget.set_tool("circle")  # okrąg 
+            # ⬅️ Nowy suwak do zmiany grubości linii
+        MDBoxLayout:                    
+            size_hint_y: None           
+            height: dp(60)              
+            spacing: dp(10)             
+            padding: dp(20)             
+            size_hint_x: None           
+            width: self.minimum_width   
+            pos_hint: {'center_x': 0.5} 
+               
+            MDSlider:
+                id: slider_width
+                min: 1
+                max: 10
+                value: 2
+                step: 1
+                size_hint_x: 0.5
+                on_value:
+                    paint_widget.set_line_width(value)
+                    slider_label.text = str(int(value))
+                
+            MDLabel:
+                id: slider_label
+                text: str(int(slider_width.value))
+                size_hint_x: None
+                width: dp(20)  
+    
+        RelativeLayout:
+            id: preview_layout
+    
+            Image:
+                id: preview_image
+                allow_stretch: True
+                keep_ratio: True
+                size_hint: 1, 1
+                pos_hint: {'center_x': 0.5, 'center_y': 0.5}
+    
+            PaintWidget:
+                id: paint_widget
+                size_hint: None, None
+                size: 0, 0
+            
+        MDBoxLayout:
+            size_hint_y: None
+            height: dp(60)
+            spacing: dp(10)
+            padding: dp(20)
+            size_hint_x: None
+            width: self.minimum_width
+            pos_hint: {'center_x': 0.5}
+            MDIconButton:
+                icon: "close"
+                on_release:
+                    paint_widget.clear_canvas()
+                    root.reject_photo()
+                    
+            MDIconButton:
+                icon: "check"
+                on_release: root.accept_photo()
+        
+            # 🧹 czyszczenie rysunku
+            MDIconButton:
+                icon: "delete"
+                on_release: paint_widget.clear_canvas()
+            MDIconButton:
+                icon: "undo"
+                on_release: paint_widget.undo()
 <SummaryScreen>:
     name: 'summary'
-    
+
     MDBoxLayout:
         orientation: 'vertical'
         padding: dp(10)
         spacing: dp(10)
 
+        # 📷 zdjęcie u góry
         Image:
             id: accepted_image
-            size_hint_y: 0.6
+            size_hint_y: 0.4
             allow_stretch: True
             keep_ratio: True
 
-        MDTextField:
-            id: description_input_legend
-            hint_text: "Tytuł strony"
-            multiline: False
-            size_hint_y: 0.15
-            
-        MDTextField:
-            id: description_input
-            hint_text: "Dodaj opis zdjęcia..."
-            multiline: True
-            size_hint_y: 0.25    
+        # 🔽 przewijane pola tekstowe
+        ScrollView:
+            size_hint_y: 0.35   # nie cała połowa, żeby jeszcze było miejsce na ikony
+            do_scroll_x: False
 
+            MDBoxLayout:
+                orientation: 'vertical'
+                padding: dp(10)
+                spacing: dp(10)
+                size_hint_y: None
+                height: self.minimum_height
+
+                MDTextField:
+                    id: description_input_legend
+                    hint_text: "Tytuł strony"
+                    multiline: False
+                    size_hint_y: None
+                    height: dp(60)
+
+                MDTextField:
+                    id: description_input
+                    hint_text: "Dodaj opis zdjęcia..."
+                    multiline: True
+                    size_hint_y: None
+                    height: dp(120)
+
+        # ✅ ikony i przyciski zawsze na dole
         MDBoxLayout:
-            size_hint_y: 0.15
-            size_hint_x: None           # dajemy None, by ustawić własną szerokość
-            width: self.minimum_width   # szerokość dopasowana do dzieci + spacing + padding
-            pos_hint: {'center_x': 0.5}
-            
+            size_hint_y: None
+            height: dp(60)
             spacing: dp(20)
             padding: dp(20)
+            pos_hint: {'center_x': 0.5}
+
             MDIconButton:
                 icon: "close"
-                on_release: root.reject_summary()
+                on_release:
+                    app.root.get_screen("preview").ids.paint_widget.clear_canvas()
+                    app.root.current = "report"
+
             MDIconButton:
                 icon: "check"
-                on_release: root.accept_summary() 
-                
+                on_release: root.accept_summary()
+
             MDRaisedButton:
                 text: "Eksportuj do PDF"
-                on_release: root.save_pdf()            
-            
+                on_release: root.save_pdf()
+
+
 <OldReportScreen>:
     name: 'old'
     MDBoxLayout:
@@ -413,7 +507,7 @@ class SummaryScreen(Screen):
         # frame jest RGB
         frame = self.current_frame
         frame = cv2.flip(frame, 0)  # tylko jeśli chcesz odwrócić pionowo (zgodnie z resztą)
-        rgb_image = frame  # już RGB
+        rgb_image = cv2.cvtColor(frame, cv2.COLOR_BGR2RGB)  # już RGB
 
         is_success, buffer = cv2.imencode(".png", rgb_image)
         if not is_success:
@@ -517,25 +611,82 @@ class SummaryScreen(Screen):
 
 class PaintWidget(Widget):
 
-    def __init__(self, **kwargs):
-        super().__init__(**kwargs)
-        self.current_color = (1, 0, 0, 1)  # domyślnie czerwony
-        self.line_width = 2
-
+    current_color = ListProperty([1, 0, 0, 1])  # domyślnie czerwony
+    line_width = NumericProperty(2)
+    tool = StringProperty("free")  # domyślnie "free" = pędze
+    actions = []
     def set_color(self, rgba):
         self.current_color = rgba
-
     def clear_canvas(self):
         self.canvas.clear()
+    def undo(self):
+        if self.actions:
+            last = self.actions.pop()
+            self.canvas.remove(last)
+    def set_tool(self, tool_name):
+            self.tool = tool_name
+
+    def set_line_width(self, width):
+        self.line_width = int(width)
 
     def on_touch_down(self, touch):
+        if not self.collide_point(*touch.pos):
+            return super().on_touch_down(touch)
+
         with self.canvas:
             Color(*self.current_color)
-            touch.ud['line'] = Line(points=(touch.x, touch.y), width=self.line_width)
 
+            if self.tool == "free":
+                line = Line(points=(touch.x, touch.y), width=self.line_width)
+                touch.ud["line"] = line
+                self.actions.append(line)
+
+            elif self.tool == "line":
+                touch.ud["start_pos"] = (touch.x, touch.y)
+                line_shape = Line(points=[touch.x, touch.y, touch.x, touch.y],
+                                  width=self.line_width)
+                touch.ud["shape"] = line_shape
+                self.actions.append(line_shape)
+
+            elif self.tool == "circle":
+                circle_shape = Line(circle=(touch.x, touch.y, 1),
+                                    width=self.line_width)
+                touch.ud["shape"] = circle_shape
+                touch.ud["circle_center"] = (touch.x, touch.y)
+                self.actions.append(circle_shape)
+
+            elif self.tool == "rect":
+                touch.ud["start_pos"] = (touch.x, touch.y)
+                rect_shape = Line(rectangle=(touch.x, touch.y, 1, 1),
+                                  width=self.line_width)
+                touch.ud["shape"] = rect_shape
+                self.actions.append(rect_shape)
+        return True
     def on_touch_move(self, touch):
-        if 'line' in touch.ud:
-            touch.ud['line'].points += [touch.x, touch.y]
+        if not self.collide_point(*touch.pos):
+            return super().on_touch_move(touch)
+
+        if self.tool == "free" and "line" in touch.ud:
+            touch.ud["line"].points += [touch.x, touch.y]
+
+        elif self.tool == "line" and "shape" in touch.ud:
+            x0, y0 = touch.ud["start_pos"]
+            touch.ud["shape"].points = [x0, y0, touch.x, touch.y]
+
+        elif self.tool == "rect" and "shape" in touch.ud:
+            x0, y0 = touch.ud["start_pos"]  # pobieramy zapamiętany punkt początkowy
+            w = touch.x - x0
+            h = touch.y - y0
+            touch.ud["shape"].rectangle = (x0, y0, w, h)
+
+        elif self.tool == "circle" and "shape" in touch.ud:
+            cx, cy = touch.ud["circle_center"]
+            r = ((touch.x - cx) ** 2 + (touch.y - cy) ** 2) ** 0.5
+            touch.ud["shape"].circle = (cx, cy, r)
+        return True
+   # def on_touch_move(self, touch):
+   #     if 'line' in touch.ud:
+   #         touch.ud['line'].points += [touch.x, touch.y]
     def export_as_image_texture(self):
         # Eksportuj narysowane elementy jako tekstura
         return self.export_as_image().texture
