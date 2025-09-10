@@ -1,4 +1,5 @@
 from kivy.clock import Clock
+from kivy.metrics import dp
 from kivy.uix.widget import Widget
 from kivy.graphics.texture import Texture
 from kivy.uix.image import Image
@@ -6,6 +7,8 @@ from kivy.uix.boxlayout import BoxLayout
 from kivy.uix.screenmanager import Screen, ScreenManager
 from kivy.lang import Builder
 from kivymd.app import MDApp
+from kivy.uix.slider import Slider
+from kivy.uix.button import Button
 from kivymd.uix.button import MDRaisedButton
 from kivymd.uix.label import MDLabel
 from reportlab.pdfgen import canvas
@@ -67,21 +70,24 @@ ScreenManager:
         spacing: dp(40)
         padding: dp(100)
         halign: 'center'
-        
-        MDLabel:
+
+        ResponsiveLabel:
             text: "Witaj w Generatorze Raportów"
             halign: 'center'
-            font_style: 'H5'
-        MDRaisedButton:
+            base_size: dp(32)   # bazowy rozmiar tekstu (dla ekranu 1280x720)
+
+        ResponsiveButton:
             text: "Stwórz nowy projekt"
             on_release: root.manager.current = 'report'
             pos_hint: {"center_x": 0.5}
-        MDRaisedButton:
-            md_bg_color: 44, 68, 81, 0.33
+            base_size: dp(20)
+
+        ResponsiveButton:
+            md_bg_color: 44/255, 68/255, 81/255, 0.33
             text: "Twoje projekty"
             pos_hint: {"center_x": 0.5}
             on_release: root.manager.current = 'old'
-
+            base_size: dp(20)
 
 <ReportScreen>:
     name: 'report'
@@ -174,31 +180,35 @@ ScreenManager:
                 on_release: paint_widget.set_tool("circle")  # okrąg 
             # ⬅️ Nowy suwak do zmiany grubości linii
         MDBoxLayout:                    
-            size_hint_y: None           
-            height: dp(60)              
-            spacing: dp(10)             
-            padding: dp(20)             
-            size_hint_x: None           
-            width: self.minimum_width   
-            pos_hint: {'center_x': 0.5} 
-               
+            size_hint_y: None
+            height: dp(60)
+            spacing: dp(20)
+            padding: dp(20)
+            #size_hint_x: 0.5
+            #width: self.minimum_width
+            pos_hint: {'center_x': 0.5}
+            orientation: 'horizontal'
+            
             MDSlider:
                 id: slider_width
                 min: 1
                 max: 10
-                value: 2
                 step: 1
-                size_hint_x: 0.5
-                on_value:
-                    paint_widget.set_line_width(value)
-                    slider_label.text = str(int(value))
+                size_hint_x: 0.7
                 
+                on_value:
+                    slider_label.text = str(int(self.value))
+                    app.root.get_screen('preview').ids.paint_widget.set_line_width(self.value)
+            
             MDLabel:
                 id: slider_label
-                text: str(int(slider_width.value))
                 size_hint_x: None
-                width: dp(20)  
-    
+                text: "2"
+                width: dp(50)
+                font_size: dp(20)
+                halign: 'center'
+                size_hint_x: 0.3  
+            
         RelativeLayout:
             id: preview_layout
     
@@ -326,6 +336,40 @@ ScreenManager:
             valign: 'center'
             halign: 'left'     
 '''
+
+#Skalowanie ekranu powitalnego
+
+def get_scale(base_width=360, base_height=640):
+    """Zwraca współczynnik skalowania względem bazowej rozdzielczości."""
+    scale_w = Window.width / base_width
+    scale_h = Window.height / base_height
+    return min(scale_w, scale_h)
+
+
+class ResponsiveLabel(MDLabel):
+    base_size = dp(20)  # domyślny rozmiar bazowy
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        Window.bind(size=self.update_font_size)
+        self.update_font_size()
+
+    def update_font_size(self, *args):
+        scale = get_scale()
+        self.font_size = self.base_size * scale
+
+
+class ResponsiveButton(MDRaisedButton):
+    base_size = dp(16)  # domyślny rozmiar bazowy czcionki
+
+    def __init__(self, **kwargs):
+        super().__init__(**kwargs)
+        Window.bind(size=self.update_font_size)
+        self.update_font_size()
+
+    def update_font_size(self, *args):
+        scale = get_scale()
+        self.font_size = self.base_size * scale
 
 class CameraWidget(BoxLayout):
     def __init__(self, **kwargs):
