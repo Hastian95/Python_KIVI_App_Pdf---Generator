@@ -4,6 +4,7 @@ from kivy.uix.widget import Widget
 from kivy.graphics.texture import Texture
 from kivy.uix.image import Image
 from kivy.uix.boxlayout import BoxLayout
+from kivymd.uix.list import OneLineIconListItem, IconLeftWidget
 from kivy.uix.screenmanager import Screen, ScreenManager
 from kivy.lang import Builder
 from kivymd.app import MDApp
@@ -17,6 +18,8 @@ from reportlab.lib.utils import ImageReader
 from kivy.graphics import Color, Line, Rectangle, Ellipse
 from kivy.properties import ListProperty, StringProperty, NumericProperty
 from reportlab.lib import colors
+import os
+import json
 import io
 import cv2
 import time
@@ -29,6 +32,8 @@ from io import BytesIO
 import os
 from reportlab.pdfbase import pdfmetrics
 from reportlab.pdfbase.ttfonts import TTFont
+from kivymd.uix.snackbar import Snackbar
+from kivy.uix.screenmanager import Screen
 
 # rejestracja czcionki obsługującej polskie znaki
 pdfmetrics.registerFont(
@@ -39,6 +44,67 @@ pdfmetrics.registerFont(
 
 from kivy.core.window import Window
 Window.size = (360, 640)  # symulacja typowego telefonu
+
+#Obsługa zapisywania plików
+
+
+PROJECTS_FILE = "projects.json"
+
+def load_projects():
+    """Wczytuje projekty z pliku JSON (lub tworzy pustą strukturę)."""
+    if os.path.exists(PROJECTS_FILE):
+        with open(PROJECTS_FILE, "r", encoding="utf-8") as f:
+            try:
+                return json.load(f)
+            except json.JSONDecodeError:
+                return {"projects": []}
+    return {"projects": []}
+
+def save_projects(data):
+    """Zapisuje projekty do pliku JSON."""
+    with open(PROJECTS_FILE, "w", encoding="utf-8") as f:
+        json.dump(data, f, indent=4, ensure_ascii=False)
+
+
+class StartScreen(Screen):
+    def create_project(self):
+        project_name = self.ids.project_name.text.strip()
+
+        # Walidacja pustego pola
+        if not project_name:
+            self.ids.project_name.error = True
+            self.ids.project_name.helper_text = "Wpisz nazwę projektu"
+            self.ids.project_name.helper_text_mode = "on_error"
+            return
+
+        # Walidacja długości (max 30 znaków)
+        if len(project_name) > 30:
+            self.ids.project_name.error = True
+            self.ids.project_name.helper_text = "Maks. 30 znaków"
+            self.ids.project_name.helper_text_mode = "on_error"
+            return
+
+        # Reset błędu
+        self.ids.project_name.error = False
+
+        # ---- Zapisywanie projektu do JSON ----
+        data = load_projects()
+
+        # sprawdzamy, czy taki projekt już istnieje
+        if any(p["name"] == project_name for p in data["projects"]):
+            self.ids.project_name.error = True
+            self.ids.project_name.helper_text = "Taka nazwa już istnieje"
+            self.ids.project_name.helper_text_mode = "on_error"
+            return
+
+        # dodajemy nowy projekt
+        data["projects"].append({"name": project_name})
+        save_projects(data)
+
+        print(f"Tworzę projekt: {project_name}")
+        self.manager.current = "report"
+
+
 
 KV = '''
 
@@ -75,12 +141,23 @@ ScreenManager:
             text: "Witaj w Generatorze Raportów"
             halign: 'center'
             base_size: dp(32)   # bazowy rozmiar tekstu (dla ekranu 1280x720)
-
+        
+        MDTextField:
+            id: project_name
+            hint_text: "Nazwa projektu"
+            max_text_length: 30
+            multiline: False
+            mode: "rectangle"
+            size_hint_x: None
+            width: dp(250)
+            pos_hint: {"center_x": 0.5}
+        
         ResponsiveButton:
             text: "Stwórz nowy projekt"
-            on_release: root.manager.current = 'report'
+            on_release: root.create_project()
             pos_hint: {"center_x": 0.5}
             base_size: dp(20)
+            
 
         ResponsiveButton:
             md_bg_color: 44/255, 68/255, 81/255, 0.33
@@ -279,6 +356,7 @@ ScreenManager:
                 MDTextField:
                     id: description_input_legend
                     hint_text: "Tytuł strony"
+                    max_text_length: 30
                     multiline: False
                     size_hint_y: None
                     height: dp(60)
@@ -315,26 +393,32 @@ ScreenManager:
 
 <OldReportScreen>:
     name: 'old'
-    MDBoxLayout:
-        size_hint_y: None
-        height: dp(50)
-        md_bg_color: 0.9, 0.9, 0.9, 1
-        padding: dp(10)
-        spacing: dp(10)
-        on_touch_down:
-            root.manager.current = 'start'
-    
-        MDIconButton:
-            icon: "arrow-left"
-            size_hint: None, None
-            size: dp(30), dp(30)
-            padding: 0  # usuń padding, który przesuwa ikonę
-            pos_hint: {"center_y": 0.5}
+    BoxLayout:
+        orientation: "vertical"
 
-        MDLabel:
-            text: "Cofnij"
-            valign: 'center'
-            halign: 'left'     
+        MDBoxLayout:
+            size_hint_y: None
+            height: dp(50)
+            md_bg_color: 0.9, 0.9, 0.9, 1
+            padding: dp(10)
+            spacing: dp(10)
+
+            MDIconButton:
+                icon: "arrow-left"
+                size_hint: None, None
+                size: dp(30), dp(30)
+                pos_hint: {"center_y": 0.5}
+                on_release: root.manager.current = 'start'
+
+            MDLabel:
+                text: "Cofnij"
+                valign: 'center'
+                halign: 'left'
+
+        ScrollView:
+            MDList:
+                id: projects_list
+
 '''
 
 #Skalowanie ekranu powitalnego
@@ -370,6 +454,32 @@ class ResponsiveButton(MDRaisedButton):
     def update_font_size(self, *args):
         scale = get_scale()
         self.font_size = self.base_size * scale
+
+class OldReportScreen(Screen):
+    def on_pre_enter(self, *args):
+        """Za każdym razem gdy wchodzimy na ekran, ładujemy projekty z JSON"""
+        self.load_projects()
+
+    def load_projects(self):
+        data = load_projects()
+
+        # Czyścimy starą listę
+        self.ids.projects_list.clear_widgets()
+
+        # Dodajemy każdy projekt jako element listy
+        for project in data.get("projects", []):
+            item = OneLineIconListItem(
+                text=project["name"],
+                on_release=lambda x, name=project["name"]: self.open_project(name)
+            )
+            icon = IconLeftWidget(icon="folder")
+            item.add_widget(icon)
+            self.ids.projects_list.add_widget(item)
+
+    def open_project(self, project_name):
+        print(f"Otwieram projekt: {project_name}")
+        # 👉 tutaj możesz załadować dane projektu, np. przełączyć na inny ekran
+        # self.manager.current = "report"
 
 class CameraWidget(BoxLayout):
     def __init__(self, **kwargs):
@@ -737,6 +847,7 @@ class PaintWidget(Widget):
 
 class OldReportScreen(Screen):
     pass
+
 
 class ReportApp(MDApp):
     def build(self):
